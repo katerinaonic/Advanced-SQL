@@ -79,10 +79,146 @@ ER-диаграмма базы данных:
 
 ## Задания и решения
 
-**1. Отобразите все записи из таблицы company по компаниям, которые закрылись.**
+**1. Найдите количество вопросов, которые набрали больше 300 очков или как минимум 100 раз были добавлены в «Закладки».**
 
 ````sql
-SELECT *
-FROM company
-WHERE status = 'closed';
+SELECT COUNT(id)
+FROM stackoverflow.posts 
+WHERE post_type_id = 1 AND (score > 300 OR favorites_count >= 100);
 ````
+
+#### answer:
+- count - 1355
+  
+**2. Сколько в среднем в день задавали вопросов с 1 по 18 ноября 2008 включительно? Результат округлите до целого числа.**
+
+SELECT ROUND(AVG(q.count))
+FROM (
+      SELECT COUNT(id),
+             creation_date::date 
+      FROM stackoverflow.posts
+      WHERE post_type_id = 1
+      GROUP BY creation_date::date 
+      HAVING creation_date::date BETWEEN '2008-11-01' AND '2008-11-18'
+) AS q;
+
+#### answer:
+- round - 383
+  
+**3. Сколько пользователей получили значки сразу в день регистрации? Выведите количество уникальных пользователей.**
+
+SELECT COUNT(DISTINCT u.id)
+FROM stackoverflow.users u
+JOIN stackoverflow.badges b ON u.id = b.user_id 
+WHERE u.creation_date::date  = b.creation_date::date;
+
+#### answer:
+- count - 7047
+  
+4.
+Сколько уникальных постов пользователя с именем Joel Coehoorn получили хотя бы один голос?
+SELECT COUNT(cv.id)
+FROM (SELECT p.id
+      FROM stackoverflow.posts p 
+      JOIN stackoverflow.users u ON p.user_id = u.id 
+      JOIN stackoverflow.votes v ON p.id = v.post_id 
+      WHERE u.display_name = 'Joel Coehoorn' AND v.id > 0
+      GROUP BY p.id) AS cv;
+5.
+Выгрузите все поля таблицы vote_types. Добавьте к таблице поле rank, в которое войдут номера записей в обратном порядке. Таблица должна быть отсортирована по полю id.
+SELECT *,
+      ROW_NUMBER() OVER(ORDER BY id DESC) AS rank
+FROM stackoverflow.vote_types
+ORDER BY id;
+6.
+Отберите 10 пользователей, которые поставили больше всего голосов типа Close. Отобразите таблицу из двух полей: идентификатором пользователя и количеством голосов. Отсортируйте данные сначала по убыванию количества голосов, потом по убыванию значения идентификатора пользователя.
+SELECT client.user_id,
+       client.count
+FROM (SELECT v.user_id,
+             COUNT(v.id) AS count,
+             vt.name
+      FROM stackoverflow.votes v 
+      JOIN stackoverflow.vote_types vt ON v.vote_type_id = vt.id 
+      GROUP BY v.user_id, vt.name
+      ORDER BY COUNT(v.id) DESC, v.user_id DESC) AS client
+WHERE name = 'Close'
+LIMIT 10;
+7.
+Отберите 10 пользователей по количеству значков, полученных в период с 15 ноября по 15 декабря 2008 года включительно.
+Отобразите несколько полей:
+идентификатор пользователя;
+число значков;
+место в рейтинге — чем больше значков, тем выше рейтинг.
+Пользователям, которые набрали одинаковое количество значков, присвойте одно и то же место в рейтинге.
+Отсортируйте записи по количеству значков по убыванию, а затем по возрастанию значения идентификатора пользователя.
+SELECT *,
+      DENSE_RANK() OVER (ORDER BY b.b_cnt DESC) AS rating
+FROM (SELECT user_id,
+             COUNT(id) AS b_cnt
+      FROM stackoverflow.badges
+      WHERE creation_date::date BETWEEN '2008-11-15' AND '2008-12-15' 
+      GROUP BY user_id
+      ORDER BY b_cnt DESC, user_id 
+      LIMIT 10) as b;
+8.
+Сколько в среднем очков получает пост каждого пользователя?
+Сформируйте таблицу из следующих полей:
+заголовок поста;
+идентификатор пользователя;
+число очков поста;
+среднее число очков пользователя за пост, округлённое до целого числа.
+Не учитывайте посты без заголовка, а также те, что набрали ноль очков.
+SELECT title,
+       user_id,
+       score,
+       ROUND(AVG(score) OVER(PARTITION BY user_id))
+FROM stackoverflow.posts 
+WHERE title IS NOT NULL AND score !=0;
+9.
+Отобразите заголовки постов, которые были написаны пользователями, получившими более 1000 значков. Посты без заголовков не должны попасть в список.
+SELECT title
+FROM stackoverflow.posts 
+WHERE user_id IN (SELECT user_id
+                  FROM stackoverflow.badges
+                  GROUP BY user_id 
+                  HAVING COUNT(id)> 1000) AND title IS NOT NULL;
+10.
+Напишите запрос, который выгрузит данные о пользователях из Канады (англ. Canada). Разделите пользователей на три группы в зависимости от количества просмотров их профилей:
+пользователям с числом просмотров больше либо равным 350 присвойте группу 1;
+пользователям с числом просмотров меньше 350, но больше либо равно 100 — группу 2;
+пользователям с числом просмотров меньше 100 — группу 3.
+Отобразите в итоговой таблице идентификатор пользователя, количество просмотров профиля и группу. Пользователи с количеством просмотров меньше либо равным нулю не должны войти в итоговую таблицу.
+SELECT id,
+       views,
+       CASE 
+           WHEN views >= 350 THEN 1
+           WHEN views < 100 THEN 3
+           ELSE 2
+       END 
+FROM stackoverflow.users
+WHERE location LIKE '%Canada%' AND views > 0;
+
+12.
+Посчитайте ежедневный прирост новых пользователей в ноябре 2008 года. Сформируйте таблицу с полями:
+номер дня;
+число пользователей, зарегистрированных в этот день;
+сумму пользователей с накоплением.
+SELECT *,
+      SUM(us.cnt) OVER(ORDER BY us.days) AS sum
+FROM (SELECT EXTRACT(DAY FROM creation_date::date) AS days,
+             COUNT(id) AS cnt
+      FROM stackoverflow.users 
+      WHERE creation_date::date BETWEEN '2008-11-01' AND '2008-11-30' 
+      GROUP BY EXTRACT(DAY FROM creation_date::date)) AS us;
+13.
+Для каждого пользователя, который написал хотя бы один пост, найдите интервал между регистрацией и временем создания первого поста. Отобразите:
+идентификатор пользователя;
+разницу во времени между регистрацией и первым постом.
+SELECT us.user_id,
+       (us.first_date - us.registration_date) AS diff
+FROM (SELECT DISTINCT p.user_id,
+             MIN(p.creation_date) OVER(PARTITION BY p.user_id) AS first_date,
+             u.creation_date AS registration_date
+      FROM stackoverflow.posts p 
+      JOIN stackoverflow.users u ON p.user_id=u.id) AS us;
+
