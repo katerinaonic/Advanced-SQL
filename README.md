@@ -272,3 +272,12 @@ FROM (SELECT DISTINCT p.user_id,
 ````
 ***
 
+**14. Выведите общую сумму просмотров у постов, опубликованных в каждый месяц 2008 года. Если данных за какой-либо месяц в базе нет, такой месяц можно пропустить. Результат отсортируйте по убыванию общего количества просмотров.**
+
+````sql   
+SELECT DATE_TRUNC('month', creation_date)::date AS mnth,
+      SUM(views_count) as total_quantity
+FROM stackoverflow.posts 
+GROUP BY  mnth
+ORDER BY total_quantity DESC;
+````
